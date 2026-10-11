@@ -1,0 +1,119 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+local blue, orange
+local nextBlue = true
+local cooldown = false
+
+local function makePortal(color, name)
+    local p = Instance.new("Part")
+    p.Name = name
+    p.Size = Vector3.new(5, 7, 0.4)
+    p.Anchored = true
+    p.CanCollide = false
+    p.CanTouch = false
+    p.Material = Enum.Material.Neon
+    p.Color = color
+    p.Transparency = 0.15
+    return p
+end
+
+local function placePortal(isBlue)
+    local char = player.Character
+    if not char then return end
+
+    local cam = workspace.CurrentCamera
+    local ray = cam:ViewportPointToRay(mouse.X, mouse.Y)
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local ignore = { char }
+    if blue then table.insert(ignore, blue) end
+    if orange then table.insert(ignore, orange) end
+    params.FilterDescendantsInstances = ignore
+
+    local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+    if not result then return end
+
+    local pos, normal = result.Position, result.Normal
+    local portal
+    if isBlue then
+        if blue then blue:Destroy() end
+        blue = makePortal(Color3.fromRGB(0, 140, 255), "BluePortal")
+        portal = blue
+    else
+        if orange then orange:Destroy() end
+        orange = makePortal(Color3.fromRGB(255, 130, 0), "OrangePortal")
+        portal = orange
+    end
+
+    portal.CFrame = CFrame.lookAt(pos + normal * 0.25, pos + normal * 2)
+    portal.Parent = workspace
+end
+
+local function teleport(from, to)
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local look = to.CFrame.LookVector
+    local exitPos = to.Position + look * 4
+    local flat = Vector3.new(look.X, 0, look.Z)
+    if flat.Magnitude < 0.1 then
+        local cl = hrp.CFrame.LookVector
+        flat = Vector3.new(cl.X, 0, cl.Z)
+    end
+
+    hrp.AssemblyLinearVelocity = Vector3.zero
+    hrp.CFrame = CFrame.new(exitPos, exitPos + flat.Unit)
+
+    cooldown = true
+    task.delay(1, function() cooldown = false end)
+end
+
+-- Проверка входа в портал
+RunService.Heartbeat:Connect(function()
+    if cooldown or not blue or not orange then return end
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local function inside(portal)
+        local rel = portal.CFrame:PointToObjectSpace(hrp.Position)
+        return math.abs(rel.X) < 3 and math.abs(rel.Y) < 4 and math.abs(rel.Z) < 2
+    end
+
+    if inside(blue) then
+        teleport(blue, orange)
+    elseif inside(orange) then
+        teleport(orange, blue)
+    end
+end)
+
+-- Портал-пушка
+local tool = Instance.new("Tool")
+tool.Name = "Портал пушка"
+tool.ToolTip = "Нажми куда угодно"
+tool.RequiresHandle = false
+tool.CanBeDropped = false
+
+tool.Activated:Connect(function()
+    placePortal(nextBlue)
+    nextBlue = not nextBlue
+end)
+
+local function giveTool()
+    local backpack = player:WaitForChild("Backpack")
+    if tool.Parent ~= backpack then
+        tool.Parent = backpack
+    end
+end
+
+giveTool()
+player.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    giveTool()
+end)
